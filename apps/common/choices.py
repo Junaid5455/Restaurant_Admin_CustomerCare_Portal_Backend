@@ -49,6 +49,7 @@ ORDER_STATUS = (
     ('CONFIRMED', 'Order Confirmed'),
     ('PREPARING', 'Preparing'),
     ('READY', 'Ready'),
+    ('DISPATCHED', 'Dispatched'),
     ('OUT_FOR_DELIVERY', 'Out for Delivery'),
     ('DELIVERED', 'Delivered'),
     ('CANCELLED', 'Cancelled'),
