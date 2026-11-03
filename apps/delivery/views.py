@@ -4,12 +4,35 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 
 from apps.delivery.models import Delivery
 from apps.delivery.serializers import DeliverySerializer, AssignDriverSerializer, UpdateLocationSerializer
 from apps.orders.models import Order
 from apps.restaurants.models import Restaurant, RestaurantStaffMember
 from apps.common.permissions import IsRestaurantOwner, IsDeliveryStaff
+
+def ensure_deliveries(restaurant_ids):
+    """
+    Every DELIVERY order the kitchen/owner has dispatched needs a Delivery row so a driver can pick it up.
+    Creates the missing ones (safe to call often).
+    """
+    orders = (
+        Order.objects.filter(restaurant_id__in=restaurant_ids, order_type='DELIVERY', status='DISPATCHED', delivery__isnull=True)
+        .select_related('restaurant')
+    )
+    for order in orders:
+        restaurant = order.restaurant
+        Delivery.objects.create(
+            order=order,
+            customer=order.customer,
+            restaurant=restaurant,
+            status='PENDING',
+            pickup_address=str(getattr(restaurant, 'address', '') or restaurant.name),
+            delivery_address=str(getattr(order, 'delivery_address', '') or ''),
+            estimated_delivery_time_minutes=getattr(restaurant, 'delivery_time_minutes', None) or 30,
+        )
+
 
 class DeliveryViewSet(viewsets.ModelViewSet):
     """Delivery management endpoints"""
@@ -28,10 +51,15 @@ class DeliveryViewSet(viewsets.ModelViewSet):
         queryset = Delivery.objects.select_related('order', 'restaurant', 'driver__user')
         
         if user.role == 'DELIVERY_STAFF':
-            # Drivers only see deliveries assigned to them
-            return queryset.filter(driver__user=user)
+            # Drivers see deliveries assigned to them, plus dispatched ones at their restaurant that nobody has taken yet
+            # (whoever picks one up becomes its driver).
+            mine = RestaurantStaffMember.objects.filter(user=user)
+            restaurant_ids = list(mine.values_list('restaurant_id', flat=True))
+            ensure_deliveries(restaurant_ids)
+            return queryset.filter(Q(driver__user=user) | Q(driver__isnull=True, restaurant_id__in=restaurant_ids, status='PENDING'))
         elif user.role == 'RESTAURANT_OWNER':
             # Owners see deliveries for their restaurant
+            ensure_deliveries(list(Restaurant.objects.filter(owner=user).values_list('id', flat=True)))
             return queryset.filter(restaurant__owner=user)
         elif user.role == 'RESTAURANT_STAFF':
             staff_member = get_object_or_404(RestaurantStaffMember, user=user)
@@ -89,7 +117,14 @@ class DeliveryViewSet(viewsets.ModelViewSet):
             
         if delivery.status not in ['ASSIGNED', 'PENDING']:
             return Response({"error": f"Cannot pick up delivery with status {delivery.status}"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        if delivery.driver is None:
+            # Nobody was assigned: the driver who picks it up takes it.
+            me = RestaurantStaffMember.objects.filter(user=request.user, restaurant=delivery.restaurant).first()
+            if me is None:
+                return Response({"error": "You do not work for this restaurant."}, status=status.HTTP_403_FORBIDDEN)
+            delivery.assign_driver(me)
+
         delivery.mark_picked_up()
         
         # Also update the order status to OUT_FOR_DELIVERY
