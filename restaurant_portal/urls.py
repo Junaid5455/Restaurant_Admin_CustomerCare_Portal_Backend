@@ -26,6 +26,8 @@ urlpatterns = [
     path("api/v1/support/", include("apps.support.urls")),
     path("api/v1/analytics/", include("apps.analytics.urls")),
 
+    path("api/v1/reviews/", include("apps.reviews.urls")),
+
     # Common URLs (Super Admin Dashboard & Health Check) - INCLUDED UNDER api/v1/
     path("api/v1/", include("apps.common.urls")),
 ]

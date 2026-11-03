@@ -34,6 +34,15 @@ class IsDeliveryStaff(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.role == 'DELIVERY_STAFF')
 
+class IsRestaurantStaffOrOwner(BasePermission):
+    """RESTAURANT_STAFF or RESTAURANT_OWNER role (kitchen screen)"""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.role in ['RESTAURANT_STAFF', 'RESTAURANT_OWNER']
+        )
+
 class IsRestaurantStaffOrDeliveryStaff(BasePermission):
     """Only RESTAURANT_STAFF or DELIVERY_STAFF role"""
     def has_permission(self, request, view):

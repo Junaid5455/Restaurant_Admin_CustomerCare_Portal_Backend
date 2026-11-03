@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.menu.serializers import MenuCategorySerializer
+from apps.restaurants import reservation_services
 from apps.restaurants.models import Restaurant, RestaurantHoliday, RestaurantDeliveryZone, RestaurantStaffMember, RestaurantTable, Reservation
 
 
@@ -101,18 +102,61 @@ class RestaurantTableSerializer(serializers.ModelSerializer):
 
 class ReservationSerializer(serializers.ModelSerializer):
     customer_email = serializers.CharField(source='customer.email', read_only=True)
+    customer_name = serializers.SerializerMethodField()
+    customer_phone = serializers.SerializerMethodField()
     restaurant_name = serializers.CharField(source='restaurant.name', read_only=True)
     table_number = serializers.CharField(source='table.table_number', read_only=True)
 
     class Meta:
         model = Reservation
         fields = [
-            'id', 'restaurant', 'restaurant_name', 'customer', 'customer_email', 'table', 'table_number',
-            'reservation_time', 'party_size', 'status', 'special_requests', 'created_at'
+            'id', 'restaurant', 'restaurant_name', 'customer', 'customer_email', 'customer_name', 'customer_phone',
+            'table', 'table_number', 'reservation_time', 'party_size', 'status', 'special_requests', 'created_at'
         ]
-        read_only_fields = ['customer', 'status', 'table']
+        # A guest may pick a `table` when booking (checked in validate). After that, owners change it through
+        # POST /reservations/{id}/assign-table/ and `status` through the action endpoints.
+        read_only_fields = ['customer', 'status']
+        extra_kwargs = {
+            'party_size': {'min_value': 1, 'max_value': reservation_services.MAX_PARTY_SIZE},
+        }
+
+    def get_customer_name(self, obj):
+        user = obj.customer
+        name = f"{getattr(user, 'first_name', '') or ''} {getattr(user, 'last_name', '') or ''}".strip()
+        return name or None
+
+    def get_customer_phone(self, obj):
+        user = obj.customer
+        return getattr(user, 'phone', None) or getattr(user, 'phone_number', None) or None
+
+    def validate(self, attrs):
+        # Booking rules apply when a guest creates a reservation (changes after that go through the action endpoints).
+        if self.instance is None:
+            ok, reason = reservation_services.check_bookable(
+                attrs['restaurant'], attrs['reservation_time'], attrs.get('party_size', 1)
+            )
+            if not ok:
+                raise serializers.ValidationError({'reservation_time': reason})
+            table = attrs.get('table')
+            if table is not None:
+                ok, reason = reservation_services.check_table(
+                    attrs['restaurant'], table, attrs['reservation_time'], attrs.get('party_size', 1)
+                )
+                if not ok:
+                    raise serializers.ValidationError({'table': f'Table {table.table_number} can\u2019t be booked: {reason}'})
+        return attrs
 
 class AvailableSlotsSerializer(serializers.Serializer):
     """Serializer for returning available time slots"""
     time = serializers.DateTimeField()
     is_available = serializers.BooleanField()
+    reason = serializers.CharField(allow_blank=True, required=False)
+
+
+class AvailableTableSerializer(serializers.Serializer):
+    """One table in the guest's table picker."""
+    id = serializers.CharField(source='table.pk')
+    table_number = serializers.CharField(source='table.table_number')
+    capacity = serializers.IntegerField(source='table.capacity')
+    is_available = serializers.BooleanField()
+    reason = serializers.CharField(allow_blank=True)

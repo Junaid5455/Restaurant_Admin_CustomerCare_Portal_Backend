@@ -2,24 +2,28 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 
 from apps.orders.models import Order
-from apps.restaurants.models import RestaurantStaffMember
+from apps.restaurants.models import Restaurant, RestaurantStaffMember
 from apps.kitchen.serializers import KitchenOrderSerializer
-from apps.common.permissions import IsRestaurantStaff
+from apps.common.permissions import IsRestaurantStaffOrOwner
 
 class KitchenOrderViewSet(viewsets.GenericViewSet):
     """Endpoints for the Kitchen Display System (KDS)"""
     serializer_class = KitchenOrderSerializer
-    permission_classes = [IsAuthenticated, IsRestaurantStaff]
+    permission_classes = [IsAuthenticated, IsRestaurantStaffOrOwner]
 
     def get_queryset(self):
         user = self.request.user
         
         # Find the restaurant the staff member belongs to
         if user.role == 'RESTAURANT_OWNER':
-            restaurant = get_object_or_404(Restaurant, owner=user)
+            # An owner may have more than one restaurant; show the first (oldest) one.
+            restaurant = Restaurant.objects.filter(owner=user).order_by('created_at').first()
+            if restaurant is None:
+                raise Http404('No restaurant is linked to this account.')
         else: # RESTAURANT_STAFF
             staff_member = get_object_or_404(RestaurantStaffMember, user=user)
             restaurant = staff_member.restaurant
