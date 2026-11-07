@@ -36,7 +36,7 @@ class RestaurantDetailSerializer(serializers.ModelSerializer):
         model = Restaurant
         fields = [
             'id', 'name', 'slug', 'logo', 'banner', 'description', 'email', 'phone',
-            'address', 'city', 'state', 'country', 'postal_code', 'opening_time', 'closing_time',
+            'address', 'city', 'state', 'country', 'postal_code', 'latitude', 'longitude', 'opening_time', 'closing_time',
             'rating', 'review_count', 'is_open_now', 'delivery_time_minutes', 'delivery_fee', 
             'min_order_amount', 'allows_pickup', 'allows_delivery', 'allows_dine_in', 
             'is_active', 'delivery_zones'
@@ -57,7 +57,7 @@ class RestaurantSettingsSerializer(serializers.ModelSerializer):
         model = Restaurant
         fields = [
             'id', 'name', 'description', 'logo', 'banner', 'email', 'phone',
-            'address', 'city', 'state', 'country', 'postal_code', 
+            'address', 'city', 'state', 'country', 'postal_code', 'latitude', 'longitude',
             'opening_time', 'closing_time', 'is_open',
             'allows_pickup', 'allows_delivery', 'allows_dine_in',
             'min_order_amount', 'delivery_fee', 'delivery_time_minutes', 'tax_rate',
