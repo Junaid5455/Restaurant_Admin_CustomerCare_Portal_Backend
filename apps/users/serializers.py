@@ -35,7 +35,18 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 
             'phone', 'role', 'profile_picture', 'is_active', 'date_joined', 'profile'
         ]
-        read_only_fields = ['id', 'role', 'profile_picture', 'is_active', 'date_joined', 'profile']
+        # profile_picture is writable so a customer can upload their photo (PUT /users/me/ as multipart/form-data).
+        read_only_fields = ['id', 'role', 'is_active', 'date_joined', 'profile']
+
+    def validate_profile_picture(self, image):
+        if image is None:
+            return image
+        if image.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError('The photo is larger than 5 MB.')
+        content_type = getattr(image, 'content_type', '') or ''
+        if content_type and content_type not in ('image/jpeg', 'image/png', 'image/webp', 'image/gif'):
+            raise serializers.ValidationError('Upload a JPG, PNG, WebP or GIF image.')
+        return image
 
 class CustomUserCreateSerializer(CustomUserSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
